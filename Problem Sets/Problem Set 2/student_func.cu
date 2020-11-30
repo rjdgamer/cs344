@@ -101,6 +101,9 @@
 //****************************************************************************
 
 #include "utils.h"
+#include "device_launch_parameters.h"
+
+
 
 __global__
 void gaussian_blur(const unsigned char* const inputChannel,
@@ -122,7 +125,96 @@ void gaussian_blur(const unsigned char* const inputChannel,
   // {
   //     return;
   // }
-  
+    //The absolute row and column position
+   
+    
+    
+    int row = blockIdx.x;
+    int column = threadIdx.x;
+    int curPixel = row * numRows + numCols;
+    //Preventing accessing memory that is not allocated
+    if (row >= numRows || column >= numCols) {
+        printf("FAIL -- Out of Bounds [gaussian_blur]");
+        return;
+
+    }
+
+
+    //Change the output channel to the current pixel regardless of weight
+
+    //Verifies that the GPU is able to obtain a pixel that is one higher than the current pixel
+    //If the current column is 0, if it tries to place higher, it will reach -1, and that will be out of bounds
+    int isTop = (column > 0) ? 1 : 0 ;
+
+    //Verifies that the GPU is able to obtain a pixel that is one lower than the current pixel
+    //if the current column is the final column, then if it tries to go one higher, it will reach non-allocated memory 
+    int isBottom = (column < numCols) ? 1 : 0; 
+
+    //Verifies that the GPU is able to obtain a pixel that is to the left of the current pixel
+   //if the current row is 0, if it tries to go to the left, it will reach -1, and that will be out of bounds
+    int isAbsoluteLeft = (row > 0) ? 1 : 0;
+
+    //Verifies that the GPU is able to obtain a pixel that is to the right of the current pixel
+    //if the current row is the final row, then if it tries to go on to the left, it will reach non allocated memory
+    int isAbsoluteRight = (row < numRows) ? 1 : 0; 
+    //printf("%d %d || %d, %d, %d, %d\n\n", row, column, isTop, isBottom, isAbsoluteLeft, isAbsoluteRight); 
+    //This is the grid of where the locations are and are not allowed
+    //I have chosen to make it an array because it will be easier to loop through
+    //I have chosen to define the variables outside of the array declaration for readability 
+    //The second index in both is always true, because it is the center, and therefore it is the same as the current pixel 
+    int permitGrid[3][3] = { {isTop, 1, isBottom}, {isAbsoluteLeft, 1, isAbsoluteRight} }; 
+    
+    //REFERENCE: 
+    //Upper/Lower (row * (numCols + x) + column)
+    //Left/Right (row * numCols + (column + x))
+    //Upper/Left -- For readability, this is what will be added to it if it is on the left, or it is on the upper side
+    int left = -1; 
+    //Lower/Right -- For readability, this is what will be added to it if it is on the right, or it is on the lower side
+    int right = 1; 
+    printf("Index: %d", curPixel); 
+    //The pixel on the upper left
+    int upperLeft = row * (numRows + left) + (column + left); 
+    //The pixel on the upper middle
+    int upperCenter = row * (numRows) + column;
+    //The pixel on the upper right
+    int upperRight = row * (numRows + right) + (column + left); 
+    //the pixel on the center left
+    int centerLeft = row * (numRows + left) + (column); 
+    //The pixel on the center middle
+    int centerCenter = curPixel;
+    //The pixel on the center right
+    int centerRight = row * numRows + (column + right); 
+    //The pixel on the lower left
+    int lowerLeft = (row * (numRows + right) + (column + left)); 
+    //The pixel on the lower middle
+    int lowerCenter = (row * (numRows + right) + column); 
+    //The pixel on the lower right
+    int lowerRight = (row * (numRows+ right) + (column + right)); 
+
+    //This is the grid of the pixels location
+    //I have chosen to seperate it from it's variable declerations for readability 
+    //I have chosen to make it an array so that it is easier to loop through 
+    unsigned char pixelGrid[3][3] = { {inputChannel[upperLeft], inputChannel[upperCenter], inputChannel[upperRight]}, {inputChannel[centerLeft], inputChannel[centerCenter], inputChannel[centerRight]}, {inputChannel[lowerLeft], inputChannel[lowerCenter], inputChannel[lowerRight]} };
+    printf("{{%u %u %u} {%u %u %u} {%u %u %u}}\n", inputChannel[upperLeft], inputChannel[upperCenter], inputChannel[upperRight], inputChannel[centerLeft], inputChannel[centerCenter], inputChannel[centerRight], inputChannel[lowerLeft], inputChannel[lowerCenter], inputChannel[lowerRight]);
+    int total = 0; 
+    int sum = 0;  
+    //Although the time complexity is O(n^2), I do not believe there is cause for concern because this same thing would be happening
+   //This for loop goes through each pixel on the 2D Moore Grid 
+    //For loops are usually bad, but because thread indexing is not a parameter, that is, it will run the same number of times each thread, there is no reason for concern 
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+                sum += pixelGrid[i][j]; 
+                total++; 
+   
+        
+        }
+    }
+    
+   double result = (double)sum / (double)total; 
+ 
+    outputChannel[curPixel] = (unsigned char)sum; 
+    
+
   // NOTE: If a thread's absolute position 2D position is within the image, but some of
   // its neighbors are outside the image, then you will need to be extra careful. Instead
   // of trying to read such a neighbor value from GPU memory (which won't work because
@@ -146,12 +238,26 @@ void separateChannels(const uchar4* const inputImageRGBA,
   // NOTE: Be careful not to try to access memory that is outside the bounds of
   // the image. You'll want code that performs the following check before accessing
   // GPU memory:
-  //
+  
   // if ( absolute_image_position_x >= numCols ||
   //      absolute_image_position_y >= numRows )
   // {
   //     return;
-  // }
+  //}
+    int row = blockIdx.x; 
+    int column = threadIdx.x; 
+    int curPixel = row * numRows + numCols; 
+    //Preventing accessing memory that is not allocated
+    if (row >= numRows || column >= numCols) {
+        printf("FAIL -- Out of Bounds [seperateChannels]"); 
+        return; 
+    
+    }
+    redChannel[curPixel] = inputImageRGBA[curPixel].x;
+    greenChannel[curPixel] = inputImageRGBA[curPixel].y; 
+    blueChannel[curPixel] = inputImageRGBA[curPixel].z; 
+    
+
 }
 
 //This kernel takes in three color channels and recombines them
@@ -185,8 +291,8 @@ void recombineChannels(const unsigned char* const redChannel,
   outputImageRGBA[thread_1D_pos] = outputPixel;
 }
 
-unsigned char *d_red, *d_green, *d_blue;
-float         *d_filter;
+unsigned char* d_red, * d_green, * d_blue;
+float* d_filter;
 
 void allocateMemoryAndCopyToGPU(const size_t numRowsImage, const size_t numColsImage,
                                 const float* const h_filter, const size_t filterWidth)
@@ -205,12 +311,14 @@ void allocateMemoryAndCopyToGPU(const size_t numRowsImage, const size_t numColsI
   //be sure to use checkCudaErrors like the above examples to
   //be able to tell if anything goes wrong
   //IMPORTANT: Notice that we pass a pointer to a pointer to cudaMalloc
+  checkCudaErrors(cudaMalloc(&d_filter, sizeof(float) * filterWidth * filterWidth)); 
 
   //TODO:
   //Copy the filter on the host (h_filter) to the memory you just allocated
   //on the GPU.  cudaMemcpy(dst, src, numBytes, cudaMemcpyHostToDevice);
-  //Remember to use checkCudaErrors!
-
+  //Remember to use checkCudaErrors! 
+  checkCudaErrors(cudaMemcpy(d_filter, h_filter, sizeof(float) * filterWidth * filterWidth, cudaMemcpyHostToDevice));
+ 
 }
 
 void your_gaussian_blur(const uchar4 * const h_inputImageRGBA, uchar4 * const d_inputImageRGBA,
@@ -220,23 +328,27 @@ void your_gaussian_blur(const uchar4 * const h_inputImageRGBA, uchar4 * const d_
                         unsigned char *d_blueBlurred,
                         const int filterWidth)
 {
-  //TODO: Set reasonable block size (i.e., number of threads per block)
-  const dim3 blockSize;
-
+  
+ //TODO: Set reasonable block size (i.e., number of threads per block)
+  const dim3 blockSize(numRows);
+  
   //TODO:
   //Compute correct grid size (i.e., number of blocks per kernel launch)
   //from the image size and and block size.
-  const dim3 gridSize;
+  const dim3 gridSize(numCols);
 
   //TODO: Launch a kernel for separating the RGBA image into different color channels
-
+  separateChannels << <blockSize, gridSize>> > (d_inputImageRGBA, numRows, numCols, d_red, d_green, d_blue);
+  
   // Call cudaDeviceSynchronize(), then call checkCudaErrors() immediately after
   // launching your kernel to make sure that you didn't make any mistakes.
   cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 
   //TODO: Call your convolution kernel here 3 times, once for each color channel.
-
-  // Again, call cudaDeviceSynchronize(), then call checkCudaErrors() immediately after
+  gaussian_blur << <blockSize, gridSize >> > (d_red, d_redBlurred, numRows, numCols, d_filter, filterWidth); 
+  gaussian_blur << <blockSize, gridSize >> > (d_green, d_greenBlurred, numRows, numCols, d_filter, filterWidth);
+  gaussian_blur << <blockSize, gridSize >> > (d_blue, d_blueBlurred, numRows, numCols, d_filter, filterWidth);
+  // Again, call cudaDeviceSynchronize(), then call checkCudaErrors() immediately after 
   // launching your kernel to make sure that you didn't make any mistakes.
   cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 
@@ -248,8 +360,9 @@ void your_gaussian_blur(const uchar4 * const h_inputImageRGBA, uchar4 * const d_
                                              d_greenBlurred,
                                              d_blueBlurred,
                                              d_outputImageRGBA,
-                                             numRows,
+                                            numRows,
                                              numCols);
+    
   cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 
 }
@@ -261,4 +374,5 @@ void cleanup() {
   checkCudaErrors(cudaFree(d_red));
   checkCudaErrors(cudaFree(d_green));
   checkCudaErrors(cudaFree(d_blue));
+  checkCudaErrors(cudaFree(d_filter)); 
 }

@@ -76,7 +76,6 @@ int main(int argc, char **argv) {
   preProcess(&h_inputImageRGBA, &h_outputImageRGBA, &d_inputImageRGBA, &d_outputImageRGBA,
              &d_redBlurred, &d_greenBlurred, &d_blueBlurred,
              &h_filter, &filterWidth, input_file);
-
   allocateMemoryAndCopyToGPU(numRows(), numCols(), h_filter, filterWidth);
   GpuTimer timer;
   timer.Start();
